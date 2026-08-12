@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bufio"
 	"errors"
 	"net/http"
 	"os"
@@ -27,8 +26,10 @@ func getDownloadBackup(c *gin.Context) {
 		return
 	}
 
-	// Get the server using the UUID from the token.
-	if _, ok := manager.Get(token.ServerUuid); !ok || token.Denylisted() || !token.IsUniqueRequest() || !token.HasScope(tokens.BackupDownload) {
+	// Deliberately not one-time: a resumed or segmented download re-sends the
+	// same token, and rejecting that is what makes large backups undownloadable.
+	// Expiry is still checked on every request when the token is parsed.
+	if _, ok := manager.Get(token.ServerUuid); !ok || token.Denylisted() || !token.HasScope(tokens.BackupDownload) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
 			"error": "The requested resource was not found on this server.",
 		})
@@ -65,11 +66,12 @@ func getDownloadBackup(c *gin.Context) {
 	}
 	defer f.Close()
 
-	c.Header("Content-Length", strconv.Itoa(int(st.Size())))
 	c.Header("Content-Disposition", "attachment; filename="+strconv.Quote(st.Name()))
 	c.Header("Content-Type", "application/octet-stream")
 
-	_, _ = bufio.NewReader(f).WriteTo(c.Writer)
+	// ServeContent answers Range requests, so an interrupted download of a
+	// multi-GB archive resumes instead of starting over.
+	http.ServeContent(c.Writer, c.Request, st.Name(), st.ModTime(), f)
 }
 
 // Handles downloading a specific file for a server.
@@ -82,7 +84,7 @@ func getDownloadFile(c *gin.Context) {
 	}
 
 	s, ok := manager.Get(token.ServerUuid)
-	if !ok || token.Denylisted() || !token.IsUniqueRequest() || !token.HasScope(tokens.FileDownload) {
+	if !ok || token.Denylisted() || !token.HasScope(tokens.FileDownload) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
 			"error": "The requested resource was not found on this server.",
 		})
@@ -102,9 +104,8 @@ func getDownloadFile(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Length", strconv.Itoa(int(st.Size())))
 	c.Header("Content-Disposition", "attachment; filename="+strconv.Quote(st.Name()))
 	c.Header("Content-Type", "application/octet-stream")
 
-	_, _ = bufio.NewReader(f).WriteTo(c.Writer)
+	http.ServeContent(c.Writer, c.Request, st.Name(), st.ModTime(), f)
 }

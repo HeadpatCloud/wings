@@ -29,6 +29,9 @@ import (
 // server and sending a flood of usernames.
 var validUsernameRegexp = regexp.MustCompile(`^(?i)(.+)\.([a-z0-9]{8})$`)
 
+// Matches what OpenSSH advertises through limits@openssh.com.
+const maxTxPacket = 255 * 1024
+
 //goland:noinspection GoNameStartsWithPackageName
 type SFTPServer struct {
 	manager  *server.Manager
@@ -167,7 +170,14 @@ func (c *SFTPServer) Handle(conn *ssh.ServerConn, srv *server.Server, channel ss
 	}
 
 	ctx := srv.Sftp().Context(handler.User())
-	rs := sftp.NewRequestServer(channel, handler.Handlers())
+	// The 32 KiB default caps a non-pipelining client at one small read per
+	// round trip, which is single-digit MB/s on any real link. The client still
+	// picks the payload size, so raising the ceiling only ever helps.
+	rs := sftp.NewRequestServer(
+		channel,
+		handler.Handlers(),
+		sftp.WithRSMaxTxPacket(maxTxPacket),
+	)
 
 	go func() {
 		select {
