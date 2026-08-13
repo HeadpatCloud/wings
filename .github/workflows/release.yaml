@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      # The secrets context is not readable from a step-level `if`, so the
+      # presence of the token has to be hoisted into a plain env flag.
+      HAS_CDN_DISPATCH_TOKEN: ${{ secrets.CDN_DISPATCH_TOKEN != '' }}
     steps:
       - name: Code checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -59,9 +63,10 @@ jobs:
       # https://cdn.pterodactyl.io/releases/latest.json. It can't read the
       # version off the API itself, because the release above is still a draft.
       # GITHUB_TOKEN deliberately cannot be used here: it has no access to
-      # another repository.
+      # another repository. Forks have no such token and no business writing to
+      # that repo, so the step is skipped rather than failing the release.
       - name: Update CDN release manifest
-        if: ${{ !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') }}
+        if: ${{ !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'alpha') && env.HAS_CDN_DISPATCH_TOKEN == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.CDN_DISPATCH_TOKEN }}
           VERSION: ${{ github.ref_name }}
