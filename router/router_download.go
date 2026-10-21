@@ -35,6 +35,7 @@ func getDownloadBackup(c *gin.Context) {
 		})
 		return
 	}
+	middleware.ClearDeadlines(c)
 
 	// Validate that the BackupUuid field is actually a UUID and not some random characters or a
 	// file path.
@@ -90,6 +91,7 @@ func getDownloadFile(c *gin.Context) {
 		})
 		return
 	}
+	middleware.ClearDeadlines(c)
 
 	f, st, err := s.Filesystem().File(token.FilePath)
 	if err != nil {
